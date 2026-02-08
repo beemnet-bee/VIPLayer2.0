@@ -33,13 +33,12 @@ const App: React.FC = () => {
   const [plan, setPlan] = useState<string | null>(null);
   const [groundingLinks, setGroundingLinks] = useState<any[]>([]);
   
-  // Sidebar State - Now initialized to closed/collapsed to satisfy 'disappear after login'
+  // Sidebar State - Disappears/Hidden by default after login as requested
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   
   const [selectedReport, setSelectedReport] = useState<HospitalReport | null>(null);
 
-  // User & Project Persistence
+  // User & Project Persistence Database (localStorage implementation)
   const [user, setUser] = useState<any>(() => JSON.parse(localStorage.getItem('vip_user') || 'null'));
   const [registeredUsers, setRegisteredUsers] = useState<any[]>(() => JSON.parse(localStorage.getItem('registered_users') || '[]'));
   
@@ -63,17 +62,26 @@ const App: React.FC = () => {
   const mainScrollRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
+  // Persistence Engine: Sync main user database
   useEffect(() => {
     localStorage.setItem('registered_users', JSON.stringify(registeredUsers));
   }, [registeredUsers]);
 
+  // Persistence Engine: Sync active session and merge back to database
   useEffect(() => {
     if (user) {
       localStorage.setItem('vip_user', JSON.stringify(user));
-      setRegisteredUsers(prev => prev.map(u => u.email === user.email ? user : u));
+      setRegisteredUsers(prev => {
+        const exists = prev.find(u => u.email === user.email);
+        if (exists) {
+          return prev.map(u => u.email === user.email ? user : u);
+        }
+        return [...prev, user];
+      });
     }
   }, [user]);
 
+  // Theme Engine
   useEffect(() => {
     if (theme === 'light') document.body.classList.add('light');
     else document.body.classList.remove('light');
@@ -89,8 +97,7 @@ const App: React.FC = () => {
       setIsLoginOpen(false);
       setHasLaunched(true);
       setViewState('workspace');
-      setIsSidebarOpen(false); // Ensure closed on login
-      setIsSidebarCollapsed(true);
+      setIsSidebarOpen(false); // Ensure hidden on login
       setFormData({ name: '', email: '', password: '' });
     } else {
       setAuthError('Invalid credentials. Identity check failed.');
@@ -104,16 +111,14 @@ const App: React.FC = () => {
     if (!/^\S+@\S+\.\S+$/.test(formData.email)) return setAuthError('Enter a valid email sequence.');
     if (formData.password.length < 6) return setAuthError('Password must be at least 6 characters.');
     if (registeredUsers.some(u => u.email === formData.email)) {
-      return setAuthError('This email is already registered.');
+      return setAuthError('This email sequence is already in the database.');
     }
     const newUser = { ...formData, projects: [] };
-    setRegisteredUsers(prev => [...prev, newUser]);
     setUser(newUser);
     setIsGetStartedOpen(false);
     setHasLaunched(true);
     setViewState('workspace');
-    setIsSidebarOpen(false);
-    setIsSidebarCollapsed(true);
+    setIsSidebarOpen(false); // Ensure hidden on login
     setFormData({ name: '', email: '', password: '' });
   };
 
@@ -125,9 +130,8 @@ const App: React.FC = () => {
     setActiveProject(null);
     setReports([]);
     setShowUserMenu(false);
-    setIsSidebarOpen(false);
-    setIsSidebarCollapsed(true);
-    setTheme('dark'); // Return to dark mode on logout as requested
+    setIsSidebarOpen(false); // Disappear sidebar on logout
+    setTheme('dark'); // Return theme to dark mode as requested
   };
 
   const readFileAsText = (file: File): Promise<string> => {
@@ -151,12 +155,14 @@ const App: React.FC = () => {
 
     try {
       addStep({ agentName: 'Parser', action: 'Multi-Format Ingestion', status: 'active', description: `Inhaling ${newProjectData.files.length} data streams...` });
+      
       const fileContents = await Promise.all(newProjectData.files.map(f => readFileAsText(f)));
       const combinedText = fileContents.filter(t => t.length > 0).join('\n\n--- SOURCE BOUNDARY ---\n\n');
+
       const parsed = await runParserAgent(combinedText);
       updateLastStep({ status: 'completed', intermediateOutput: parsed });
 
-      addStep({ agentName: 'Verifier', action: 'Global Grounding', status: 'active', description: 'Scraping internet nodes...' });
+      addStep({ agentName: 'Verifier', action: 'Global Grounding', status: 'active', description: 'Scraping internet nodes for validation...' });
       const enrichedDiscovery = await runDiscoveryAgent(parsed.facilityName || newProjectData.name);
       
       let finalReports = enrichedDiscovery.data || [];
@@ -191,12 +197,18 @@ const App: React.FC = () => {
         analysisResult: strategistRes.text
       };
 
-      setUser(prev => ({ ...prev, projects: [...(prev.projects || []), newProject] }));
+      // Permanent Project Storage
+      setUser(prev => ({
+        ...prev,
+        projects: [...(prev.projects || []), newProject]
+      }));
+
       setPlan(strategistRes.text);
       setActiveProject(newProject);
       setReports(newProject.reports);
       if (enrichedDiscovery.grounding) setGroundingLinks(enrichedDiscovery.grounding);
     } catch (err) {
+      console.error(err);
       addStep({ agentName: 'Parser', action: 'Critical Error', status: 'error' });
     } finally {
       setIsThinking(false);
@@ -218,10 +230,15 @@ const App: React.FC = () => {
   const handleAddNode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeProject || !newNodeData.facilityName) return;
+
     setIsAddNodeOpen(false);
     setIsThinking(true);
+    setViewState('simulation');
+
     try {
+      addStep({ agentName: 'Parser', action: 'Manual Ingestion', status: 'active', description: `Processing entry for ${newNodeData.facilityName}...` });
       const parsed = await runParserAgent(newNodeData.unstructuredText);
+      
       const newNode: HospitalReport = {
         id: 'manual-' + Date.now(),
         facilityName: parsed.facilityName || newNodeData.facilityName,
@@ -230,13 +247,25 @@ const App: React.FC = () => {
         unstructuredText: newNodeData.unstructuredText,
         extractedData: parsed
       };
-      setReports([...reports, newNode]);
-      const updatedProject = { ...activeProject, reports: [...activeProject.reports, newNode] };
+
+      const updatedReports = [...reports, newNode];
+      setReports(updatedReports);
+      
+      const updatedProject = {
+        ...activeProject,
+        reports: [...activeProject.reports, newNode]
+      };
+      
       setActiveProject(updatedProject);
       setUser(prev => ({
         ...prev,
         projects: prev.projects.map((p: UserProject) => p.id === activeProject.id ? updatedProject : p)
       }));
+
+      updateLastStep({ status: 'completed', intermediateOutput: newNode });
+      setNewNodeData({ facilityName: '', region: '', unstructuredText: '' });
+    } catch (err) {
+      addStep({ agentName: 'Parser', action: 'Critical Error', status: 'error' });
     } finally {
       setIsThinking(false);
     }
@@ -286,14 +315,21 @@ const App: React.FC = () => {
     setIsThinking(true);
     setSteps([]);
     setViewState('analysis');
+
     try {
+      addStep({ agentName: 'Parser', action: 'Deep Scrape', status: 'active', description: 'Searching live-web for updates...' });
       const discovery = await runDiscoveryAgent(activeProject?.name || "Global Healthcare");
       if (discovery.data?.length > 0) {
         setReports(prev => [...prev, ...discovery.data]);
         if (discovery.grounding) setGroundingLinks(prev => [...prev, ...discovery.grounding]);
       }
+      
+      addStep({ agentName: 'Strategist', action: 'Logic Synthesis', status: 'active', description: 'Re-calculating resource horizons...' });
       const strategyResponse = await runStrategistAgent(reports);
       setPlan(strategyResponse.text);
+      updateLastStep({ status: 'completed', metrics: strategyResponse.metrics });
+    } catch (err) {
+      addStep({ agentName: 'Strategist', action: 'Fail', status: 'error' });
     } finally {
       setIsThinking(false);
     }
@@ -315,6 +351,7 @@ const App: React.FC = () => {
   const NavItem = ({ icon: Icon, label, id, badge, alwaysVisible = false }: { icon: any, label: string, id: ViewState, badge?: string, alwaysVisible?: boolean }) => {
     const isVisible = alwaysVisible || (activeProject !== null);
     if (!isVisible) return null;
+
     return (
       <button 
         onClick={() => { setViewState(id); setIsSidebarOpen(false); }}
@@ -351,7 +388,6 @@ const App: React.FC = () => {
         <AnimatePresence>
           {user && hasLaunched && (
             <>
-              {/* Sidebar Overlay - Makes it disappear until toggled */}
               <motion.div 
                 initial={{ opacity: 0 }} 
                 animate={{ opacity: isSidebarOpen ? 1 : 0 }} 
@@ -673,9 +709,9 @@ const App: React.FC = () => {
                 <button onClick={() => setIsGetStartedOpen(false)} className="absolute top-10 right-10 p-4 rounded-2xl bg-white/5 text-slate-500 hover:text-[var(--text-main)] transition-colors"><X className="w-6 h-6" /></button>
                 <div className="mb-14 text-center sm:text-left"><UserPlus className="w-12 h-12 text-emerald-400 mb-6 mx-auto sm:mx-0" /><h3 className="text-4xl font-black tracking-tighter text-[var(--text-main)]">New Enrollment</h3><p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mt-2">Initialize Credentials Node</p></div>
                 <form onSubmit={handleRegisterSubmit} className="space-y-8">
-                  <div className="space-y-3"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Operator Name</label><input required type="text" value={formData.name} onChange={(e) => setFormData(p => ({...p, name: e.target.value}))} placeholder="Designation Name" className="w-full bg-[var(--input-bg)] border border-white/10 rounded-2xl px-8 py-6 text-sm text-[var(--text-main)] focus:outline-none focus:border-emerald-500/50 transition-all" /></div>
-                  <div className="space-y-3"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Email Sequence</label><input required type="email" value={formData.email} onChange={(e) => setFormData(p => ({...p, email: e.target.value}))} placeholder="agent@vip.layer" className="w-full bg-[var(--input-bg)] border border-white/10 rounded-2xl px-8 py-6 text-sm text-[var(--text-main)] focus:outline-none focus:border-emerald-500/50 transition-all" /></div>
-                  <div className="space-y-3"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Secure Password</label><input required type="password" value={formData.password} onChange={(e) => setFormData(p => ({...p, password: e.target.value}))} placeholder="Min 6 characters" className="w-full bg-[var(--input-bg)] border border-white/10 rounded-2xl px-8 py-6 text-sm text-[var(--text-main)] focus:outline-none focus:border-emerald-500/50 transition-all" /></div>
+                  <div className="space-y-3"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Operator Name</label><input required type="text" value={formData.name} onChange={(e) => setFormData(p => ({...p, name: e.target.value}))} placeholder="Designation Name" className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-8 py-6 text-sm text-[var(--text-main)] focus:outline-none focus:border-emerald-500/50 transition-all" /></div>
+                  <div className="space-y-3"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Email Sequence</label><input required type="email" value={formData.email} onChange={(e) => setFormData(p => ({...p, email: e.target.value}))} placeholder="agent@vip.layer" className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-8 py-6 text-sm text-[var(--text-main)] focus:outline-none focus:border-emerald-500/50 transition-all" /></div>
+                  <div className="space-y-3"><label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Secure Password</label><input required type="password" value={formData.password} onChange={(e) => setFormData(p => ({...p, password: e.target.value}))} placeholder="Min 6 characters" className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-8 py-6 text-sm text-[var(--text-main)] focus:outline-none focus:border-emerald-500/50 transition-all" /></div>
                   {authError && <p className="text-rose-500 text-[10px] font-black uppercase tracking-widest px-2">{authError}</p>}
                   <button type="submit" className="w-full py-7 bg-emerald-500 text-emerald-950 text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-emerald-400 shadow-2xl transition-all mt-4">Confirm Enrollment</button>
                 </form>
