@@ -6,6 +6,11 @@ export interface HospitalReport {
   reportDate: string;
   unstructuredText: string;
   coordinates?: [number, number];
+  anomalies?: {
+    type: 'conflicting_data' | 'unverified_claim' | 'outdated_metrics';
+    description: string;
+    severity: 'low' | 'medium' | 'high';
+  }[];
   extractedData?: {
     beds: number;
     specialties: string[];
@@ -24,6 +29,13 @@ export interface UserProject {
   documents: string[];
   reports: HospitalReport[];
   analysisResult?: string;
+  placements?: {
+    id: string;
+    facilityName: string;
+    role: string;
+    priority: 'Critical' | 'High' | 'Routine';
+    status: 'Planned' | 'Deployed' | 'Completed';
+  }[];
 }
 
 export interface MedicalDesert {
@@ -63,7 +75,7 @@ export interface AuditLog {
   status: 'success' | 'warning' | 'info';
 }
 
-export type ViewState = 'dashboard' | 'map' | 'analysis' | 'audit' | 'simulation' | 'workspace' | 'project-detail';
+export type ViewState = 'dashboard' | 'map' | 'analysis' | 'audit' | 'simulation' | 'workspace' | 'matching' | 'integrity';
 
 export interface AgentState {
   steps: AgentStep[];
