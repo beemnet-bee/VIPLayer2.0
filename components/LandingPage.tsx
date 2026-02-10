@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Activity, ShieldCheck, Zap, Cpu, Globe, ArrowRight, Loader2, Database, Lock, Server, Terminal, LogIn, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Logo from './Logo';
 
 interface Props {
   onLaunch: () => void;
@@ -117,26 +118,17 @@ const LandingPage: React.FC<Props> = ({ onLaunch, onSignIn, onGetStarted, user }
           
           <motion.div 
             initial={{ y: 30, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
+            animate={{ 
+              y: 0, 
+              opacity: 1 
+            }}
+            transition={{ 
+              y: { duration: 0.8 },
+              opacity: { duration: 0.8 }
+            }}
             className="flex flex-col items-center gap-6 mb-8 sm:mb-12"
           >
-            <div className="relative">
-               <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full scale-150 animate-pulse"></div>
-               <motion.div className="relative p-6 bg-emerald-500/10 rounded-[2.5rem] border border-emerald-500/20 shadow-3xl">
-                 <Activity className="w-12 h-12 sm:w-16 sm:h-16 text-emerald-400" />
-               </motion.div>
-            </div>
-            <div className="text-center">
-              <motion.h1 
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-4xl sm:text-7xl font-black tracking-tighter text-white mb-2"
-              >
-                VIP <span className="bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">LAYER</span>
-              </motion.h1>
-              <p className="text-slate-500 text-[8px] sm:text-[10px] font-black uppercase tracking-[0.5em]">Virtue Intelligence Protocol</p>
-            </div>
+            <Logo size="xl" />
           </motion.div>
 
           <motion.p 

@@ -13,6 +13,7 @@ import LandingPage from './components/LandingPage';
 import ReportDetail from './components/ReportDetail';
 import AIChatBot from './components/AIChatBot';
 import MarkdownRenderer from './components/MarkdownRenderer';
+import Logo from './components/Logo';
 import { CapabilityBarChart, MissionPieChart } from './components/VisualTelemetry';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { runDiscoveryAgent, runParserAgent, runStrategistAgent, runMatcherAgent } from './services/geminiService';
@@ -63,7 +64,6 @@ const App: React.FC = () => {
   useEffect(() => {
     if (user) {
       localStorage.setItem('vip_user', JSON.stringify(user));
-      // Update the user list with latest project data for persistence
       setRegisteredUsers(prev => {
         const index = prev.findIndex(u => u.email === user.email);
         if (index !== -1) {
@@ -200,7 +200,6 @@ const App: React.FC = () => {
         placements: []
       };
 
-      // Update state immediately for the Workspace view
       setUser((prev: any) => ({
         ...prev,
         projects: [...(prev?.projects || []), newProject]
@@ -212,7 +211,6 @@ const App: React.FC = () => {
       setGroundingLinks(strategy.grounding || []);
       addAudit(`Project Initialized: ${newProject.name}`);
       
-      // Navigate to dashboard automatically after creation
       setTimeout(() => setViewState('dashboard'), 1500);
     } catch (err) {
       console.error(err);
@@ -390,11 +388,7 @@ const App: React.FC = () => {
                 className="fixed lg:relative inset-y-0 left-0 z-[110] border-r border-white/[0.03] p-4 flex flex-col h-full bg-[var(--sidebar-bg)] shadow-4xl overflow-hidden"
               >
                 <div className="flex items-center gap-4 mb-10 px-2 flex-shrink-0 w-[320px]">
-                  <div className="relative bg-gradient-to-br from-emerald-400 to-emerald-600 p-2 rounded-2xl shadow-emerald-500/30 shadow-xl flex-shrink-0"><Activity className="text-white w-5 h-5" /></div>
-                  <div className="min-w-0">
-                    <h1 className="text-md font-extrabold tracking-tighter text-[var(--text-main)]">VIP LAYER</h1>
-                    <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest leading-none">Intelligence</p>
-                  </div>
+                  <Logo size="md" />
                   <button onClick={() => setIsSidebarOpen(false)} className="ml-auto p-2 text-slate-500 hover:text-emerald-400 transition-colors"><PanelLeftClose className="w-4 h-4" /></button>
                 </div>
                 
