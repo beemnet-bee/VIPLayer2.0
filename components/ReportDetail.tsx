@@ -219,6 +219,11 @@ const ReportDetail: React.FC<Props> = ({ report, onClose, onIntervention }) => {
                 </motion.div>
               )}
             </AnimatePresence>
+            <div className="mt-4 flex justify-center">
+              <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">
+                Node Integrity ID: {(report.id || "ERR").toUpperCase()}_LOG_ERR
+              </p>
+            </div>
           </div>
         </motion.div>
       </div>

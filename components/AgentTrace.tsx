@@ -87,7 +87,7 @@ const AgentTrace: React.FC<Props> = ({ steps }) => {
                     </div>
                     <div className="flex items-center gap-4 flex-shrink-0">
                       <span className="text-[9px] font-mono font-bold text-slate-500 tracking-tighter hidden sm:block">
-                        TXN_{step.id.slice(0, 4).toUpperCase()}
+                        TXN_{(step.id || "").slice(0, 4).toUpperCase()}
                       </span>
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                     </div>

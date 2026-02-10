@@ -63,9 +63,14 @@ const App: React.FC = () => {
   useEffect(() => {
     if (user) {
       localStorage.setItem('vip_user', JSON.stringify(user));
+      // Update the user list with latest project data for persistence
       setRegisteredUsers(prev => {
-        const exists = prev.find(u => u.email === user.email);
-        if (exists) return prev.map(u => u.email === user.email ? user : u);
+        const index = prev.findIndex(u => u.email === user.email);
+        if (index !== -1) {
+          const newList = [...prev];
+          newList[index] = user;
+          return newList;
+        }
         return [...prev, user];
       });
     }
@@ -100,7 +105,8 @@ const App: React.FC = () => {
     
     setActiveProject(updatedProject);
     setUser((prev: any) => {
-      const updatedProjects = (prev.projects || []).map((p: UserProject) => p.id === project.id ? updatedProject : p);
+      const existingProjects = prev?.projects || [];
+      const updatedProjects = existingProjects.map((p: UserProject) => p.id === project.id ? updatedProject : p);
       if (!updatedProjects.find((p: UserProject) => p.id === project.id)) {
         updatedProjects.push(updatedProject);
       }
@@ -166,35 +172,38 @@ const App: React.FC = () => {
     try {
       addStep({ agentName: 'Parser', action: 'IDP Synthesis', status: 'active', description: `Initializing ingestion of ${newProjectData.files.length} document nodes...` });
       
-      // Speeding up simulated delays for faster UX
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 400));
       updateLastStep({ status: 'completed', description: `Ingested ${newProjectData.files.length} files successfully. Source streams validated.` });
       
       addStep({ agentName: 'Verifier', action: 'Geo-Spatial Grounding', status: 'active', description: 'Cross-referencing facility coordinates with satellite clusters...' });
       const discovery = await runDiscoveryAgent(newProjectData.name);
-      await new Promise(r => setTimeout(r, 400));
-      updateLastStep({ status: 'completed', intermediateOutput: discovery.data });
+      await new Promise(r => setTimeout(r, 300));
+      
+      const discoveredWithIds = (discovery.data || []).map((r: any) => ({
+        ...r,
+        id: 'discovered-' + Math.random().toString(36).substr(2, 9)
+      }));
+      updateLastStep({ status: 'completed', intermediateOutput: discoveredWithIds });
 
       addStep({ agentName: 'Strategist', action: 'Holistic Analysis', status: 'active', description: 'Computing 100x efficiency delta for Virtue Foundation...' });
-      const strategy = await runStrategistAgent([...GHANA_HOSPITALS, ...(discovery.data || [])]);
+      const mergedReports = [...GHANA_HOSPITALS, ...discoveredWithIds];
+      const strategy = await runStrategistAgent(mergedReports);
       
       const newProject: UserProject = {
         id: 'p' + Date.now(),
         name: newProjectData.name,
         createdAt: new Date().toLocaleDateString(),
         documents: newProjectData.files.map(f => f.name),
-        reports: [...GHANA_HOSPITALS, ...(discovery.data || [])],
+        reports: mergedReports,
         analysisResult: strategy.text,
         analysisHistory: [],
         placements: []
       };
 
-      const finalSteps = [...steps]; 
-      
-      // Fixed: Explicitly update user state so the project appears in the Workspace
+      // Update state immediately for the Workspace view
       setUser((prev: any) => ({
         ...prev,
-        projects: [...(prev.projects || []), newProject]
+        projects: [...(prev?.projects || []), newProject]
       }));
       
       setActiveProject(newProject);
@@ -202,7 +211,11 @@ const App: React.FC = () => {
       setPlan(strategy.text);
       setGroundingLinks(strategy.grounding || []);
       addAudit(`Project Initialized: ${newProject.name}`);
+      
+      // Navigate to dashboard automatically after creation
+      setTimeout(() => setViewState('dashboard'), 1500);
     } catch (err) {
+      console.error(err);
       addAudit(`Project Initialization Failed`, 'warning');
       addStep({ agentName: 'Parser', action: 'Fatal Error', status: 'error', description: 'Logic core disconnected.' });
     } finally {
@@ -307,9 +320,9 @@ const App: React.FC = () => {
     return reports.filter(r => {
       const search = kbSearch.toLowerCase();
       const matchesSearch = 
-        r.facilityName.toLowerCase().includes(search) || 
-        r.region.toLowerCase().includes(search) || 
-        r.unstructuredText.toLowerCase().includes(search);
+        (r.facilityName || "").toLowerCase().includes(search) || 
+        (r.region || "").toLowerCase().includes(search) || 
+        (r.unstructuredText || "").toLowerCase().includes(search);
       const matchesRegion = kbFilterRegion === 'All' || r.region === kbFilterRegion;
       return matchesSearch && matchesRegion;
     });
@@ -417,7 +430,7 @@ const App: React.FC = () => {
                {user && (
                  <div onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-3 pl-3 lg:pl-6 border-l border-[var(--border-subtle)] cursor-pointer group relative">
                     <div className="w-9 h-9 lg:w-10 lg:h-10 rounded-2xl bg-gradient-to-tr from-slate-900 to-slate-800 flex items-center justify-center text-xs font-bold ring-1 ring-white/10 group-hover:ring-emerald-500/50 transition-all text-white">
-                      {user.name?.[0]?.toUpperCase()}
+                      {(user.name || "A")?.[0]?.toUpperCase()}
                     </div>
                     <AnimatePresence>{showUserMenu && (
                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-full right-0 mt-4 w-52 bg-[var(--sidebar-bg)] border border-white/10 rounded-2xl shadow-4xl p-2 z-[1000] backdrop-blur-3xl">
@@ -478,7 +491,7 @@ const App: React.FC = () => {
                          <div className="mt-10 h-48 relative z-10">
                            <CapabilityBarChart 
                               title="Infrastructure Gap Density" 
-                              data={reports.slice(0, 6).map(r => ({ label: r.facilityName.split(' ')[0], value: r.extractedData?.confidence ? r.extractedData.confidence * 100 : 50, color: 'from-blue-500 to-emerald-500' }))} 
+                              data={reports.slice(0, 6).map(r => ({ label: (r.facilityName || "").split(' ')[0], value: r.extractedData?.confidence ? r.extractedData.confidence * 100 : 50, color: 'from-blue-500 to-emerald-500' }))} 
                            />
                          </div>
                       </div>
@@ -551,7 +564,7 @@ const App: React.FC = () => {
                    </div>
                    
                    <div className="grid grid-cols-1 gap-6">
-                      {reports.filter(r => (r.anomalies?.length || 0) > 0 || (r.extractedData?.confidence && r.extractedData.confidence < 0.9)).map(r => (
+                      {reports.filter(r => (r.anomalies?.length || 0) > 0 || (r.extractedData?.confidence !== undefined && r.extractedData.confidence < 0.9)).map(r => (
                         <motion.div 
                           key={r.id} 
                           initial={{ opacity: 0, y: 20 }} 
@@ -591,12 +604,12 @@ const App: React.FC = () => {
                            </div>
                            
                            <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                              <p className="text-[10px] font-bold text-slate-500 uppercase italic">Ref: {r.id.toUpperCase()}_LOG_ERR</p>
+                              <p className="text-[10px] font-bold text-slate-500 uppercase italic">Ref: {(r.id || "ERR").toUpperCase()}_LOG_ERR</p>
                               <button onClick={() => setSelectedReport(r)} className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[9px] font-black text-[var(--text-main)] uppercase tracking-widest transition-all">Deep Inspec Node</button>
                            </div>
                         </motion.div>
                       ))}
-                      {reports.filter(r => (r.anomalies?.length || 0) > 0 || (r.extractedData?.confidence && r.extractedData.confidence < 0.9)).length === 0 && (
+                      {reports.filter(r => (r.anomalies?.length || 0) > 0 || (r.extractedData?.confidence !== undefined && r.extractedData.confidence < 0.9)).length === 0 && (
                         <div className="py-48 text-center glass-card rounded-[3rem] border-white/5 flex flex-col items-center justify-center opacity-30">
                            <ShieldCheck className="w-16 h-16 text-emerald-500 mb-6" />
                            <p className="text-sm font-black uppercase tracking-widest">No Critical Anomalies Detected in current project buffer.</p>
@@ -663,7 +676,7 @@ const App: React.FC = () => {
                                    className="w-full p-6 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all group"
                                  >
                                     <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-2 group-hover:translate-x-1 transition-transform">{entry.timestamp}</p>
-                                    <p className="text-xs text-slate-400 line-clamp-2 font-medium leading-relaxed">{entry.plan.replace(/[#*]/g, '').slice(0, 80)}...</p>
+                                    <p className="text-xs text-slate-400 line-clamp-2 font-medium leading-relaxed">{(entry.plan || "").replace(/[#*]/g, '').slice(0, 80)}...</p>
                                  </button>
                                ))}
                             </div>
@@ -746,7 +759,7 @@ const App: React.FC = () => {
                                </div>
                              </div>
                           </div>
-                          <div className="text-[9px] font-mono text-slate-600 bg-black/20 px-4 py-2 rounded-lg tracking-widest">TXN_{log.id.toUpperCase()}</div>
+                          <div className="text-[9px] font-mono text-slate-600 bg-black/20 px-4 py-2 rounded-lg tracking-widest">TXN_{(log.id || "").toUpperCase()}</div>
                        </div>
                      ))}
                    </div>
